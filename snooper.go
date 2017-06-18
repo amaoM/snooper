@@ -1,72 +1,95 @@
 package main
 
 import (
-	"errors"
-	"flag"
+	"fmt"
+	"io"
 	"log"
 	"os"
-	"strings"
+	"strconv"
+	"sync"
 	"time"
 )
 
 func main() {
-	fssh := flag.String("ssh", "", "ssh connection")
-	fftp := flag.String("sftp", "", "sftp connection")
-
-	flag.Parse()
-
-	if *fssh != "" && *fftp != "" {
-		log.Fatal("You cannot specify ssh and sftp together")
+	log.Println("started")
+	var wg sync.WaitGroup
+	for _, ip := range []string{"192.168.20.20", "192.168.70.71"} {
+		wg.Add(1)
+		go getCpuUsage(ip, &wg)
 	}
-
-	if *fssh != "" {
-		user, host, err := SplitUserHost(*fssh)
-
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		err = Ssh(host, user)
-
-		if err != nil {
-			log.Fatal(err)
-		}
-
-	} else if *fftp != "" {
-		user, host, err := SplitUserHost(*fftp)
-
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		fp := "/proc/stat"
-		ofp := os.Getenv("HOME") + "/stac"
-		err = Sftp(host, user, fp, ofp)
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		flst := GetData(ofp)
-		time.Sleep(1 * time.Second)
-
-		err = Sftp(host, user, fp, ofp)
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		slst := GetData(ofp)
-		Calculate(flst, slst, os.Stdout)
-
-	} else {
-		fp := `/proc/stat`
-		Local(fp)
-	}
+	wg.Wait()
+	log.Println("finished")
 }
 
-func SplitUserHost(arg string) (string, string, error) {
-	lst := strings.Split(arg, "@")
-	if len(lst) != 2 {
-		return "", "", errors.New("Invalid arguments")
+func getCpuUsage(ip string, wg *sync.WaitGroup) {
+	h := new(Host)
+	h.ip = ip
+	h.port = "22"
+	h.user = "vagrant"
+
+	fs := new(Stat)
+	fs.path = "/proc/stat"
+	ss := new(Stat)
+	ss.path = "/proc/stat"
+
+	for _, s := range []*Stat{fs, ss} {
+		err := h.Connect(s)
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer h.client.Close()
+		defer h.session.Close()
+
+		// To reduce the influence of a ssh connection processing
+		time.Sleep(1 * time.Second)
+
+		err = h.execCmd(s)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		bstr, err := s.changeBufferToString()
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		err = s.splitStatString(bstr)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		slst, err := s.splitCpuUsageTimeString()
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		err = s.getCpuUsageTime(slst)
+		if err != nil {
+			log.Fatal(err)
+		}
 	}
-	return lst[0], lst[1], nil
+
+	calculate(fs.cpuUsageTimeList, ss.cpuUsageTimeList, os.Stdout, h.ip)
+
+	wg.Done()
+}
+
+func calculate(flst []int, slst []int, w io.Writer, ip string) {
+	tlst := make([]int, len(flst))
+	sum := 0
+
+	for i := 0; i < len(flst); i++ {
+		tlst[i] = slst[i] - flst[i]
+		sum += tlst[i]
+	}
+
+	items := []string{"user", "nice", "system", "idle", "iowait", "irq", "softirq", "steal", "guest"}
+
+	fmt.Fprintln(w, "+++++ "+ip+" +++++")
+	for ii := 0; ii < len(items); ii++ {
+		fmt.Fprintf(w, "%-8s", items[ii])
+		fmt.Fprintf(w, "%3s", strconv.Itoa(tlst[ii]*100/sum))
+		fmt.Fprintln(w, " %")
+	}
+	fmt.Fprintln(w, "+++++++++++++++++++++++++")
 }
