@@ -1,108 +1,72 @@
 package main
 
 import (
-	"bufio"
 	"errors"
-	"fmt"
-	"io"
+	"flag"
 	"log"
 	"os"
-	"regexp"
-	"strconv"
 	"strings"
 	"time"
 )
 
 func main() {
-	fp := `/proc/stat`
-	flst := GetData(fp)
-	time.Sleep(1 * time.Second)
-	slst := GetData(fp)
-	Calculate(flst, slst, os.Stdout)
-}
+	fssh := flag.String("ssh", "", "ssh connection")
+	fftp := flag.String("sftp", "", "sftp connection")
 
-func GetData(fp string) []int {
-	f, err := OpenFile(fp)
-	defer f.Close()
-	if err != nil {
-		log.Fatal(err)
-	}
-	t, err := GetText(f)
-	if err != nil {
-		log.Fatal(err)
-	}
-	slst, err := SplitText(t)
-	if err != nil {
-		log.Fatal(err)
-	}
-	ilst, err := ParseStat(slst)
-	if err != nil {
-		log.Fatal(err)
-	}
-	return ilst
-}
+	flag.Parse()
 
-func OpenFile(fp string) (*os.File, error) {
-	f, err := os.Open(fp)
-	if err != nil {
-		return nil, err
-	}
-	return f, nil
-}
-
-func GetText(f *os.File) (string, error) {
-	s := bufio.NewScanner(f)
-
-	s.Scan()
-	if err := s.Err(); err != nil {
-		return "", err
+	if *fssh != "" && *fftp != "" {
+		log.Fatal("You cannot specify ssh and sftp together")
 	}
 
-	t := s.Text()
-	if t == "" || !regexp.MustCompile(`^cpu  `).Match([]byte(t)) {
-		return "", errors.New("Failed to get a text")
-	}
+	if *fssh != "" {
+		user, host, err := SplitUserHost(*fssh)
 
-	return t, nil
-}
-
-func SplitText(t string) ([]string, error) {
-	lst := strings.Split(t, " ")
-	if 12 > len(lst) {
-		return nil, errors.New("Parse data is invalid data")
-	}
-	return lst, nil
-}
-
-func ParseStat(lst []string) ([]int, error) {
-	var tlst []int
-
-	for i := 0; i < len(lst); i++ {
-		if regexp.MustCompile(`[0-9]`).Match([]byte(lst[i])) {
-			t, err := strconv.Atoi(lst[i])
-			if err != nil {
-				return nil, err
-			}
-			tlst = append(tlst, t)
+		if err != nil {
+			log.Fatal(err)
 		}
-	}
 
-	return tlst, nil
+		err = Ssh(host, user)
+
+		if err != nil {
+			log.Fatal(err)
+		}
+
+	} else if *fftp != "" {
+		user, host, err := SplitUserHost(*fftp)
+
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		fp := "/proc/stat"
+		ofp := os.Getenv("HOME") + "/stac"
+		err = Sftp(host, user, fp, ofp)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		flst := GetData(ofp)
+		time.Sleep(1 * time.Second)
+
+		err = Sftp(host, user, fp, ofp)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		slst := GetData(ofp)
+		Calculate(flst, slst, os.Stdout)
+
+	} else {
+		fp := `/proc/stat`
+		Local(fp)
+	}
 }
 
-func Calculate(flst []int, slst []int, w io.Writer) {
-	tlst := make([]int, len(flst))
-	sum := 0
-
-	for i := 0; i < len(flst); i++ {
-		tlst[i] = slst[i] - flst[i]
-		sum += tlst[i]
+func SplitUserHost(arg string) (string, string, error) {
+	lst := strings.Split(arg, "@")
+	if len(lst) != 2 {
+		return "", "", errors.New("Invalid arguments")
 	}
-
-	items := []string{"user", "nice", "system", "idle", "iowait", "irq", "softirq", "steal", " ?"}
-	for ii := 0; ii < len(items); ii++ {
-		fmt.Fprintf(w, "%-8s", items[ii])
-		fmt.Fprintf(w, "%3s", strconv.Itoa(tlst[ii]*100/sum))
-		fmt.Fprintln(w, " %")
-	}
+	return lst[0], lst[1], nil
 }

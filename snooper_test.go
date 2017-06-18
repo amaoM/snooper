@@ -123,22 +123,22 @@ func TestParseStat(t *testing.T) {
 }
 
 func TestCalculate(t *testing.T) {
-	flst := []int{543942, 66, 704894, 622360, 1385, 2, 3770, 0, 0, 0}
-	slst := []int{544942, 66, 704894, 622360, 1385, 2, 3770, 0, 0, 0}
+	flst := []int{5246691, 72, 7172275, 624873, 1385, 2, 29873, 0, 0, 0}
+	slst := []int{5246790, 72, 7172382, 627286, 1385, 2, 29873, 0, 0, 0}
 	buf := &bytes.Buffer{}
 
 	Calculate(flst, slst, buf)
 
 	actual := buf.String()
-	expected := `user    100 %
+	expected := `user      3 %
 nice      0 %
-system    0 %
-idle      0 %
+system    4 %
+idle     92 %
 iowait    0 %
 irq       0 %
 softirq   0 %
 steal     0 %
- ?        0 %
+guest     0 %
 `
 
 	if actual != expected {
