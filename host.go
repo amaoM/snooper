@@ -3,6 +3,7 @@ package main
 import (
 	"io/ioutil"
 	"os"
+	"time"
 
 	"golang.org/x/crypto/ssh"
 )
@@ -46,6 +47,7 @@ func (h *Host) Ssh() error {
 			ssh.PublicKeys(key),
 		},
 		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+		Timeout:         5 * time.Second,
 	}
 
 	h.client, err = ssh.Dial("tcp", h.ip+":"+h.port, config)

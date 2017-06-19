@@ -1,19 +1,38 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"io"
 	"log"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
 
 func main() {
+	var (
+		h  string
+		sh string
+	)
+	flag.StringVar(&h, "host", "", "host comma-separated list")
+	flag.StringVar(&sh, "h", "", "host comma-separated list (short)")
+	flag.Parse()
+
+	var hosts []string
+	if h != "" {
+		hosts = strings.Split(h, ",")
+	} else if sh != "" {
+		hosts = strings.Split(sh, ",")
+	} else {
+		log.Fatal("Not specified hosts")
+	}
+
 	log.Println("started")
 	var wg sync.WaitGroup
-	for _, ip := range []string{"192.168.20.20", "192.168.70.71"} {
+	for _, ip := range hosts {
 		wg.Add(1)
 		go getCpuUsage(ip, &wg)
 	}
