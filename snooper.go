@@ -12,14 +12,24 @@ import (
 	"time"
 )
 
+var version string
+
 func main() {
 	var (
 		h  string
 		sh string
+		v  bool
 	)
+	flag.BoolVar(&v, "version", false, "show version")
+	flag.BoolVar(&v, "v", false, "show version (short)")
 	flag.StringVar(&h, "host", "", "host comma-separated list")
 	flag.StringVar(&sh, "h", "", "host comma-separated list (short)")
 	flag.Parse()
+
+	if v {
+		fmt.Println("version: ", version)
+		return
+	}
 
 	var hosts []string
 	if h != "" {
